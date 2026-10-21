@@ -142,6 +142,8 @@ ort.env.wasm.numThreads = 1;
 ort.env.logLevel = "error";
 
 let photos = [], cur = 0, models = null;
+let DEVICE = "";
+try { DEVICE = localStorage.getItem("pp_dev") || ""; if (!DEVICE) { DEVICE = crypto.randomUUID(); localStorage.setItem("pp_dev", DEVICE); } } catch(e) { DEVICE = "nostore-" + Math.random().toString(36).slice(2); }
 
 async function rpc(fn, body) {
   const r = await fetch(`${SUPA}/rest/v1/rpc/${fn}`, {method:"POST",
@@ -168,8 +170,24 @@ function err(t){ show("stepStart"); const m=$("msg"); m.textContent=t; m.style.d
 })();
 function updateBtns(){ const ok = $("agree").checked && $("code").value.trim().length===6; $("btnCam").disabled = $("btnPick").disabled = !ok; }
 $("agree").onchange = updateBtns; $("code").oninput = updateBtns;
-$("btnCam").onclick = () => $("fCam").click();
-$("btnPick").onclick = () => $("fPick").click();
+function gateMsg(r){
+  return r.status==="bad_code" ? `입장코드가 맞지 않아요. (남은 기회 ${r.remaining}번)`
+    : r.status==="locked" ? `입장코드를 5번 틀려서 ${r.minutes||30}분 동안 잠겼어요. 선생님께 코드를 다시 확인해주세요.`
+    : r.status==="expired" ? "공개 기간이 끝난 행사입니다."
+    : r.status==="busy" ? "지금 찾는 분이 많아요. 잠시 뒤 다시 시도해주세요."
+    : r.status==="no_event" ? "행사를 찾을 수 없어요. 링크를 다시 확인해주세요."
+    : "문제가 생겼어요. 잠시 후 다시 시도해주세요.";
+}
+async function checkThen(input){
+  $("msg").style.display="none";
+  try {
+    const r = await rpc("photo_check_code", {p_slug:SLUG, p_code:$("code").value.trim(), p_device:DEVICE});
+    if (r.status !== "ok") return err(gateMsg(r));
+    input.click();
+  } catch(e) { err("인터넷 연결을 확인해주세요."); }
+}
+$("btnCam").onclick = () => checkThen($("fCam"));
+$("btnPick").onclick = () => checkThen($("fPick"));
 $("fCam").onchange = $("fPick").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) run(f); };
 $("btnAgain").onclick = () => { show("stepStart"); };
 
@@ -250,14 +268,11 @@ async function run(file){
     pc.width = pc.height = 176; pc.getContext("2d").drawImage(src, face.x+face.w/2-r, face.y+face.h/2-r, 2*r, 2*r, 0,0,176,176);
     $("selfieImg").src = pc.toDataURL("image/jpeg", .8);
     $("workS").textContent = "행사 사진과 비교하고 있어요";
-    photos = await rpc("photo_find", {p_slug:SLUG, p_code:$("code").value.trim(), p_emb:emb});
-    render();
+    const res = await rpc("photo_find", {p_slug:SLUG, p_code:$("code").value.trim(), p_emb:emb, p_device:DEVICE});
+    if (res.status !== "ok") return err(gateMsg(res));
+    photos = res.photos; render();
   } catch(e) {
-    const m = String(e.message||e);
-    err(m.includes("bad_code") ? "입장코드가 맞지 않아요. 다시 확인해주세요."
-      : m.includes("expired") ? "공개 기간이 끝난 행사입니다."
-      : m.includes("busy") ? "지금 찾는 분이 많아요. 1분 뒤 다시 시도해주세요."
-      : "문제가 생겼어요. 잠시 후 다시 시도해주세요. (" + m + ")");
+    err("문제가 생겼어요. 잠시 후 다시 시도해주세요. (" + String(e.message||e) + ")");
   }
 }
 const url = p => `${SUPA}/storage/v1/object/public/${BUCKET}/${p.path}`;
