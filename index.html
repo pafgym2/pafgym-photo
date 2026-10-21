@@ -168,7 +168,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const SUPA = "https://dzmxwsxcwtugnyyfvnja.supabase.co";
 const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6bXh3c3hjd3R1Z255eWZ2bmphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMzUxNjcsImV4cCI6MjA5NjgxMTE2N30.PkzQD7JJuFdtMGWzm2FC9HFzf1wVW1Wh9wg41SxJKzg";
@@ -380,6 +380,10 @@ function updateSel(){
     const end = Math.min(batchStart + BATCH, n), part = Math.floor(batchStart / BATCH) + 1, parts = Math.ceil(n / BATCH);
     b.textContent = `⬇︎ ${batchStart+1}~${end}번째 사진 저장 (${part}/${parts})`;
     $("prog").textContent = `아이폰은 ${BATCH}장씩 나눠서 저장해요`;
+  } else if (IS_AND) {
+    prepZip();
+    if (!zipReady) { b.disabled = true; b.textContent = `묶는 중… (${n}장)`; $("prog").textContent = ""; }
+    else { b.textContent = `⬇︎ 선택한 ${n}장 한 번에 받기 (ZIP)`; $("prog").innerHTML = "받은 뒤 <b>내 파일 → 다운로드</b>에서 ZIP을 누르고 <b>압축 풀기</b>하면 갤러리에 보여요."; }
   } else { b.textContent = `⬇︎ 선택한 ${n}장 저장하기`; $("prog").textContent = ""; }
 }
 async function preload(){
@@ -408,9 +412,23 @@ $("btnOne").onclick = () => {
 async function zipFiles(files){
   $("prog").textContent = "ZIP 파일 만드는 중…";
   const z = new JSZip(); files.forEach(f => z.file(f.name, f));
-  const blob = await z.generateAsync({type:"blob"});
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "PAFGYM_" + SLUG + ".zip"; document.body.appendChild(a); a.click(); a.remove();
+  const blob = await z.generateAsync({type:"blob", compression:"STORE"});
+  dl(new File([blob], zipName(), {type:"application/zip"}));
   $("prog").textContent = "ZIP 파일을 받았어요";
+}
+// 안드로이드: 선택이 바뀔 때마다 ZIP을 미리 만들어 두고, 버튼을 누르는 순간 파일 1개로 바로 다운로드
+let zipReady = null, zipKey = "", zipTimer;
+const zipName = () => "PAFGYM_" + ($("evTitle").textContent || SLUG).replace(/\s+/g, "") + ".zip";
+function prepZip(){
+  if (!IS_AND || !window.JSZip) return;
+  const list = selected(); if (!list.length || list.some(p => !blobs.has(p.path))) return;
+  const key = list.map(p => p.path).join("|"); if (key === zipKey && zipReady) return;
+  zipReady = null; zipKey = key; clearTimeout(zipTimer);
+  zipTimer = setTimeout(async () => {
+    const z = new JSZip(); list.forEach(p => z.file(blobs.get(p.path).name, blobs.get(p.path)));
+    const blob = await z.generateAsync({type:"blob", compression:"STORE"});
+    if (zipKey === key) { zipReady = new File([blob], zipName(), {type:"application/zip"}); updateSel(); }
+  }, 300);
 }
 // 저장 버튼: 미리 받아둔 사진으로 '누른 순간' 바로 공유창/다운로드 (아이폰 제한 대응)
 function saveFiles(files){
@@ -425,7 +443,12 @@ function saveFiles(files){
     if (IN_KAKAO) { alert("카카오톡 안에서는 저장이 안 될 수 있어요. 위의 '기본 브라우저로 열기'를 눌러주세요."); return; }
     downloadFiles(files); return;
   }
-  if (IS_AND) { downloadFiles(files); $("prog").innerHTML = files.length > 1 ? "⚠️ <b>여러 파일 다운로드 허용</b> 창이 뜨면 허용을 눌러주세요.<br>1장만 받아졌다면 아래 <b>한 장씩 저장하기</b>를 이용해주세요." : ""; return; }
+  if (IS_AND) {
+    if (files.length === 1) { dl(files[0]); return; }
+    if (zipReady) { dl(zipReady); $("prog").innerHTML = "✓ ZIP 다운로드 시작! <b>내 파일 → 다운로드</b>에서 ZIP을 누르고 <b>압축 풀기</b>를 해주세요.<br>압축 풀기가 어렵다면 아래 <b>한 장씩 저장하기</b>를 이용해주세요."; }
+    else zipFiles(files);
+    return;
+  }
   if (files.length > 3 && window.JSZip) zipFiles(files); else downloadFiles(files);
 }
 $("btnAll").onclick = () => {
