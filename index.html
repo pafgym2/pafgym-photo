@@ -52,8 +52,19 @@ label.btn{position:relative}
 .resh b em{font-style:normal;color:var(--red)}
 .resh span{color:var(--sub);font-size:13px}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
-.grid button{border:0;padding:0;background:var(--soft);aspect-ratio:4/5;overflow:hidden;cursor:pointer;border-radius:4px}
-.grid img{width:100%;height:100%;object-fit:cover;display:block}
+.tile{position:relative;background:var(--soft);aspect-ratio:4/5;overflow:hidden;cursor:pointer;border-radius:4px;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+.tile img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .15s;-webkit-touch-callout:none;pointer-events:none}
+.tile .ck{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:var(--red);border:2px solid #fff;color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.tile.off img{opacity:.3}
+.tile.off .ck{background:rgba(0,0,0,.35);color:transparent}
+.tile .zoom{position:absolute;left:5px;bottom:5px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.selbar{display:flex;align-items:center;gap:6px;margin:0 0 10px;font-size:13px}
+.selbar b{margin-right:auto;font-weight:800}
+.selbar b em{font-style:normal;color:var(--red)}
+.selbar button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px;font-family:inherit;font-weight:700;cursor:pointer}
+.kakao{display:none;margin:4px 0 14px;padding:14px;border-radius:12px;background:#fff8d6;border:1px solid #f3e08a;font-size:13.5px;line-height:1.6}
+.kakao button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;background:#191919;color:#fff;font-weight:800;font-family:inherit;font-size:14px;cursor:pointer}
+.prog{font-size:12.5px;color:var(--sub);text-align:center;margin-top:8px;min-height:18px}
 .viewer{position:fixed;inset:0;background:#000;z-index:10;display:flex;flex-direction:column}
 .viewer img{flex:1;min-height:0;width:100%;object-fit:contain}
 .vbar{display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
@@ -118,11 +129,15 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
   <!-- 3. 결과 -->
   <div id="stepResult" class="hidden">
     <div class="selfie"><img id="selfieImg" alt=""></div>
-    <div class="resh"><b>내 사진 <em id="resN">0</em>장</b><span id="resS">사진을 눌러 크게 보고 저장하세요</span></div>
+    <div class="resh"><b>내 사진 <em id="resN">0</em>장</b><span id="resS"></span></div>
+    <div class="kakao" id="kakao">카카오톡 안에서는 사진 여러 장 저장이 잘 안 돼요.<br><b>사파리(삼성인터넷·크롬)로 열면</b> 한 번에 저장할 수 있어요.
+      <button id="btnExt">기본 브라우저로 열기</button></div>
+    <div class="selbar" id="selbar"><b>선택 <em id="selN">0</em>장</b><button id="selAll">전체 선택</button><button id="selNone">전체 해제</button></div>
     <div class="grid" id="grid"></div>
-    <button class="btn" id="btnAll">⬇︎ 전체 사진 저장하기</button>
+    <button class="btn red" id="btnAll">⬇︎ 선택한 사진 저장하기</button>
+    <p class="prog" id="prog"></p>
     <button class="btn line" id="btnAgain">다른 셀카로 다시 찾기</button>
-    <p class="tip">아이폰: "전체 사진 저장하기" → 공유창에서 <b>"이미지 저장"</b>을 누르면 사진 앱에 저장돼요.</p>
+    <p class="tip">빼고 싶은 사진을 누르면 체크가 풀려요. 🔍를 누르면 크게 볼 수 있어요.<br>아이폰: 저장 버튼 → 공유창에서 <b>"이미지 저장"</b>을 누르면 사진 앱에 저장돼요.</p>
     <div class="review">
       <div class="em">🏃‍♀️💨</div>
       <b>이번 선데이런데이, 즐거우셨나요?</b>
@@ -144,6 +159,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
 <script>
 const SUPA = "https://dzmxwsxcwtugnyyfvnja.supabase.co";
 const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6bXh3c3hjd3R1Z255eWZ2bmphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMzUxNjcsImV4cCI6MjA5NjgxMTE2N30.PkzQD7JJuFdtMGWzm2FC9HFzf1wVW1Wh9wg41SxJKzg";
@@ -304,28 +320,99 @@ async function run(file){
   }
 }
 const url = p => `${SUPA}/storage/v1/object/public/${BUCKET}/${p.path}`;
+const UA = navigator.userAgent, IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1),
+      IS_AND = /Android/i.test(UA), IN_KAKAO = /KAKAOTALK/i.test(UA);
+const BATCH = 20;            // 아이폰 공유창 한 번에 보내는 장수
+let sel = new Set(), blobs = new Map(), batchStart = 0;
+function selected(){ return photos.filter(p => sel.has(p.path)); }
 function render(){
   show("stepResult");
   $("resN").textContent = photos.length;
-  $("btnAll").classList.toggle("hidden", !photos.length);
-  $("resS").textContent = photos.length ? "사진을 눌러 크게 보고 저장하세요" : "찾은 사진이 없어요. 다른 셀카로 다시 시도해보세요.";
+  const has = photos.length > 0;
+  for (const id of ["btnAll","selbar","prog"]) $(id).classList.toggle("hidden", !has);
+  $("resS").textContent = has ? "" : "찾은 사진이 없어요. 다른 셀카로 다시 시도해보세요.";
+  $("kakao").style.display = has && IN_KAKAO ? "block" : "none";
+  sel = new Set(photos.map(p => p.path)); batchStart = 0;
   const g = $("grid"); g.innerHTML = "";
-  photos.forEach((p,i) => { const b=document.createElement("button"); const im=document.createElement("img");
-    im.loading="lazy"; im.src=url(p); im.alt=""; b.appendChild(im); b.onclick=()=>openV(i); g.appendChild(b); });
+  photos.forEach((p,i) => {
+    const t = document.createElement("div"); t.className = "tile"; t.dataset.path = p.path;
+    t.innerHTML = `<img loading="lazy" alt="" src="${url(p)}"><span class="ck">✓</span><button class="zoom" aria-label="크게 보기">🔍</button>`;
+    t.onclick = e => { if (e.target.closest(".zoom")) { openV(i); return; } toggle(p.path); };
+    g.appendChild(t);
+  });
+  updateSel(); preload();
 }
+function toggle(path){ sel.has(path) ? sel.delete(path) : sel.add(path); batchStart = 0; updateSel(); }
+$("selAll").onclick = () => { sel = new Set(photos.map(p=>p.path)); batchStart = 0; updateSel(); };
+$("selNone").onclick = () => { sel.clear(); batchStart = 0; updateSel(); };
+function updateSel(){
+  for (const t of $("grid").children) t.classList.toggle("off", !sel.has(t.dataset.path));
+  const list = selected(), n = list.length; $("selN").textContent = n;
+  const ready = list.filter(p => blobs.has(p.path)).length;
+  const b = $("btnAll");
+  if (!n) { b.disabled = true; b.textContent = "저장할 사진을 선택해주세요"; $("prog").textContent = ""; return; }
+  if (ready < n) { b.disabled = true; b.textContent = `저장 준비 중… ${ready}/${n}`; $("prog").textContent = "사진을 미리 받아두는 중이에요"; return; }
+  b.disabled = false;
+  if (IS_IOS && n > BATCH) {
+    const end = Math.min(batchStart + BATCH, n), part = Math.floor(batchStart / BATCH) + 1, parts = Math.ceil(n / BATCH);
+    b.textContent = `⬇︎ ${batchStart+1}~${end}번째 사진 저장 (${part}/${parts})`;
+    $("prog").textContent = `아이폰은 ${BATCH}장씩 나눠서 저장해요`;
+  } else { b.textContent = `⬇︎ 선택한 ${n}장 저장하기`; $("prog").textContent = ""; }
+}
+async function preload(){
+  const queue = photos.slice(); let active = 0;
+  await new Promise(done => {
+    const next = () => {
+      if (!queue.length && !active) return done();
+      while (active < 4 && queue.length) {
+        const p = queue.shift(); active++;
+        fetch(url(p)).then(r => r.blob()).then(b => blobs.set(p.path, new File([b], p.orig_name || "pafgym.jpg", {type:"image/jpeg"})))
+          .catch(() => {}).finally(() => { active--; updateSel(); next(); });
+      }
+    };
+    next();
+  });
+}
+function downloadFiles(files){
+  files.forEach((f, k) => setTimeout(() => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
+    document.body.appendChild(a); a.click(); a.remove(); }, k * 400));
+}
+async function zipFiles(files){
+  $("prog").textContent = "ZIP 파일 만드는 중…";
+  const z = new JSZip(); files.forEach(f => z.file(f.name, f));
+  const blob = await z.generateAsync({type:"blob"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "PAFGYM_" + SLUG + ".zip"; document.body.appendChild(a); a.click(); a.remove();
+  $("prog").textContent = "ZIP 파일을 받았어요";
+}
+// 저장 버튼: 미리 받아둔 사진으로 '누른 순간' 바로 공유창/다운로드 (아이폰 제한 대응)
+function saveFiles(files){
+  if (IS_IOS) {
+    if (navigator.canShare && navigator.canShare({files})) {
+      navigator.share({files}).then(() => {
+        if (files.length > 1 && batchStart + BATCH < selected().length) { batchStart += BATCH; updateSel(); }
+        else if (files.length > 1) { $("prog").textContent = "✓ 저장 완료! 사진 앱에서 확인해보세요"; batchStart = 0; setTimeout(updateSel, 2500); }
+      }).catch(() => {});
+      return;
+    }
+    if (IN_KAKAO) { alert("카카오톡 안에서는 저장이 안 될 수 있어요. 위의 '기본 브라우저로 열기'를 눌러주세요."); return; }
+    downloadFiles(files); return;
+  }
+  if (IS_AND) { downloadFiles(files); $("prog").textContent = files.length > 1 ? "다운로드 폴더(갤러리)에 저장돼요. 여러 파일 다운로드 허용을 눌러주세요." : ""; return; }
+  if (files.length > 3 && window.JSZip) zipFiles(files); else downloadFiles(files);
+}
+$("btnAll").onclick = () => {
+  let list = selected();
+  if (IS_IOS && list.length > BATCH) list = list.slice(batchStart, batchStart + BATCH);
+  saveFiles(list.map(p => blobs.get(p.path)).filter(Boolean));
+};
+$("btnExt").onclick = () => {
+  const u = location.href;
+  location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(u);
+};
 function openV(i){ cur=(i+photos.length)%photos.length; $("vImg").src=url(photos[cur]); $("vIdx").textContent=(cur+1)+" / "+photos.length; $("viewer").classList.remove("hidden"); }
 $("vClose").onclick = () => $("viewer").classList.add("hidden");
 $("vPrev").onclick = () => openV(cur-1); $("vNext").onclick = () => openV(cur+1);
-async function fileOf(p){ const b = await (await fetch(url(p))).blob(); return new File([b], (p.orig_name||"pafgym.jpg"), {type:"image/jpeg"}); }
-async function save(list){
-  const files = [];
-  for (const [i,p] of list.entries()) { $("btnAll").textContent = `준비 중… ${i+1}/${list.length}`; files.push(await fileOf(p)); }
-  $("btnAll").textContent = "⬇︎ 전체 사진 저장하기";
-  if (navigator.canShare && navigator.canShare({files})) { try { await navigator.share({files}); } catch(e){} return; }
-  for (const f of files) { const a=document.createElement("a"); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r=>setTimeout(r,300)); }
-}
-$("vSave").onclick = () => save([photos[cur]]);
-$("btnAll").onclick = () => save(photos);
+$("vSave").onclick = () => { const f = blobs.get(photos[cur].path); if (f) saveFiles([f]); else window.open(url(photos[cur]), "_blank"); };
 </script>
 </body>
 </html>
