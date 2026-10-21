@@ -167,7 +167,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
   <div class="vbar"><button class="btn line" id="vPrev">‹</button><button class="btn red" id="vSave">이 사진 저장</button><button class="btn line" id="vNext">›</button></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.wasm.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const SUPA = "https://dzmxwsxcwtugnyyfvnja.supabase.co";
@@ -176,7 +176,9 @@ const BUCKET = "pafgym-photos";
 const qs = new URLSearchParams(location.search);
 const SLUG = qs.get("e") || "";
 const $ = id => document.getElementById(id);
-ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+// 1.18은 SIMD 미지원 기기(iOS 16.3 이하 등)용 일반 wasm도 함께 있어 자동으로 골라 씀
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
+if (new URLSearchParams(location.search).get("nosimd")) ort.env.wasm.simd = false;   // 테스트용
 ort.env.wasm.numThreads = 1;
 ort.env.logLevel = "error";
 
