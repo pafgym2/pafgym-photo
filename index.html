@@ -64,6 +64,13 @@ label.btn{position:relative}
 .selbar button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px;font-family:inherit;font-weight:700;cursor:pointer}
 .kakao{display:none;margin:4px 0 14px;padding:14px;border-radius:12px;background:#fff8d6;border:1px solid #f3e08a;font-size:13.5px;line-height:1.6}
 .kakao button{margin-top:8px;width:100%;padding:12px;border:0;border-radius:10px;background:#191919;color:#fff;font-weight:800;font-family:inherit;font-size:14px;cursor:pointer}
+.toast{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%) scale(.96);z-index:20;width:min(320px,calc(100% - 48px));padding:18px 20px;border-radius:16px;background:rgba(17,17,17,.88);color:#fff;text-align:center;font-size:14.5px;line-height:1.65;pointer-events:none;opacity:0;transition:opacity .6s ease,transform .6s ease;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.toast .ex{display:flex;justify-content:center;gap:14px;margin-bottom:10px;font-size:13px}
+.toast .ex span{display:flex;align-items:center;gap:6px}
+.toast .dot{width:20px;height:20px;border-radius:50%;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+.toast .dot.on{background:var(--red)}
+.toast .dot.no{background:rgba(255,255,255,.2)}
 .prog{font-size:12.5px;color:var(--sub);text-align:center;margin-top:8px;min-height:18px}
 .viewer{position:fixed;inset:0;background:#000;z-index:10;display:flex;flex-direction:column}
 .viewer img{flex:1;min-height:0;width:100%;object-fit:contain}
@@ -152,6 +159,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
   </footer>
 </div>
 
+<div class="toast" id="toast"><div class="ex"><span><i class="dot on">✓</i>저장</span><span><i class="dot no"></i>빼기</span></div>모든 사진이 선택되어 있어요.<br><b>빼고 싶은 사진을 누르면</b> 체크가 풀려요.<br>다시 누르면 다시 선택돼요.</div>
 <div class="viewer hidden" id="viewer">
   <div class="vtop"><span id="vIdx"></span><button id="vClose" aria-label="닫기">×</button></div>
   <img id="vImg" alt="">
@@ -341,6 +349,13 @@ function render(){
     g.appendChild(t);
   });
   updateSel(); preload();
+  if (has) showToast();
+}
+let toastT;
+function showToast(){
+  const t = $("toast"); clearTimeout(toastT); t.classList.remove("show");
+  setTimeout(() => t.classList.add("show"), 350);          // 결과 화면이 뜬 뒤 살짝
+  toastT = setTimeout(() => t.classList.remove("show"), 4200);   // 약 4초 보여주고 흐릿하게 사라짐
 }
 function toggle(path){ sel.has(path) ? sel.delete(path) : sel.add(path); batchStart = 0; updateSel(); }
 $("selAll").onclick = () => { sel = new Set(photos.map(p=>p.path)); batchStart = 0; updateSel(); };
