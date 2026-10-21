@@ -33,6 +33,11 @@ input.code:focus{outline:none;border-color:var(--ink)}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border:0;border-radius:12px;background:var(--ink);color:#fff;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:12px}
 .btn.line{background:#fff;color:var(--ink);border:1.5px solid var(--ink)}
 .btn.red{background:var(--red)}
+.vh{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;overflow:hidden}
+label.btn{position:relative}
+.btn.off{background:#ccc;border-color:#ccc;color:#fff;pointer-events:none}
+.ok{color:#0a7a3d;font-weight:800}
+.msgc{color:var(--red);font-weight:700}
 .btn:disabled{background:#ccc;border-color:#ccc;color:#fff;cursor:not-allowed}
 .tip{font-size:12.5px;color:var(--sub);margin-top:10px;line-height:1.6}
 .msg{margin-top:12px;font-size:14px;font-weight:700;color:var(--red);display:none}
@@ -92,17 +97,15 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
     <div class="card">
       <h2><i>02</i>입장코드</h2>
       <input class="code" id="code" maxlength="6" autocomplete="off" placeholder="······">
-      <p class="tip">담당 선생님께 받은 6자리 코드를 입력해주세요.</p>
+      <p class="tip" id="codeState">담당 선생님께 받은 6자리 코드를 입력해주세요.</p>
     </div>
     <div class="card">
       <h2><i>03</i>셀카로 찾기</h2>
-      <button class="btn red" id="btnCam" disabled>📷 셀카 찍고 내 사진 찾기</button>
-      <button class="btn line" id="btnPick" disabled>앨범에서 내 사진 고르기</button>
+      <label class="btn red off" id="btnCam">📷 셀카 찍고 내 사진 찾기<input type="file" id="fCam" accept="image/*" capture="user" class="vh"></label>
+      <label class="btn line off" id="btnPick">앨범에서 내 사진 고르기<input type="file" id="fPick" accept="image/*" class="vh"></label>
       <p class="tip">모자·선글라스를 벗고, 밝은 곳에서 정면으로 찍으면 더 잘 찾아요.</p>
       <p class="msg" id="msg"></p>
     </div>
-    <input type="file" id="fCam" accept="image/*" capture="user" hidden>
-    <input type="file" id="fPick" accept="image/*" hidden>
   </div>
 
   <!-- 2. 처리 중 -->
@@ -176,11 +179,28 @@ function err(t){ show("stepStart"); const m=$("msg"); m.textContent=t; m.style.d
     $("evDate").textContent = (ev.event_date||"").replaceAll("-",".") + " · 사진 " + ev.photo_count + "장";
     if (ev.expired) { $("evSub").textContent = "공개 기간이 끝난 행사입니다."; $("stepStart").classList.add("hidden"); }
   } catch(e) { $("evTitle").textContent = "행사를 찾을 수 없어요"; $("evSub").textContent = "링크를 다시 확인해주세요."; }
-  if (qs.get("c")) $("code").value = qs.get("c");
+  if (qs.get("c")) { $("code").value = qs.get("c"); checkCode(); }
   updateBtns();
 })();
-function updateBtns(){ const ok = $("agree").checked && $("code").value.trim().length===6; $("btnCam").disabled = $("btnPick").disabled = !ok; }
-$("agree").onchange = updateBtns; $("code").oninput = updateBtns;
+// 입장코드는 입력하는 즉시 확인 → 버튼은 누르는 순간 바로 카메라/앨범이 열리게 (아이폰·카톡 브라우저 제한 대응)
+let codeOk = false, checking = 0;
+function updateBtns(){ const ok = $("agree").checked && codeOk; $("btnCam").classList.toggle("off", !ok); $("btnPick").classList.toggle("off", !ok); }
+function codeState(html, cls){ const el=$("codeState"); el.innerHTML = html; el.className = "tip" + (cls ? " "+cls : ""); }
+async function checkCode(){
+  codeOk = false; updateBtns(); $("msg").style.display="none";
+  const v = $("code").value.trim().toUpperCase();
+  if (v.length !== 6) { codeState("담당 선생님께 받은 6자리 코드를 입력해주세요."); return; }
+  const my = ++checking; codeState("코드 확인 중…");
+  try {
+    const r = await rpc("photo_check_code", {p_slug:SLUG, p_code:v, p_device:DEVICE});
+    if (my !== checking) return;
+    if (r.status === "ok") { codeOk = true; codeState("✓ 입장코드가 확인됐어요" + ($("agree").checked ? "" : " · 위의 동의 체크를 해주세요"), "ok"); }
+    else codeState(gateMsg(r), "msgc");
+  } catch(e) { if (my === checking) codeState("인터넷 연결을 확인해주세요."); }
+  updateBtns();
+}
+$("agree").onchange = () => { updateBtns(); if (codeOk) codeState("✓ 입장코드가 확인됐어요", "ok"); };
+$("code").oninput = checkCode;
 function gateMsg(r){
   return r.status==="bad_code" ? `입장코드가 맞지 않아요. (남은 기회 ${r.remaining}번)`
     : r.status==="locked" ? `입장코드를 5번 틀려서 ${r.minutes||30}분 동안 잠겼어요. 선생님께 코드를 다시 확인해주세요.`
@@ -189,16 +209,7 @@ function gateMsg(r){
     : r.status==="no_event" ? "행사를 찾을 수 없어요. 링크를 다시 확인해주세요."
     : "문제가 생겼어요. 잠시 후 다시 시도해주세요.";
 }
-async function checkThen(input){
-  $("msg").style.display="none";
-  try {
-    const r = await rpc("photo_check_code", {p_slug:SLUG, p_code:$("code").value.trim(), p_device:DEVICE});
-    if (r.status !== "ok") return err(gateMsg(r));
-    input.click();
-  } catch(e) { err("인터넷 연결을 확인해주세요."); }
-}
-$("btnCam").onclick = () => checkThen($("fCam"));
-$("btnPick").onclick = () => checkThen($("fPick"));
+
 $("fCam").onchange = $("fPick").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) run(f); };
 $("btnAgain").onclick = () => { show("stepStart"); };
 
@@ -262,11 +273,17 @@ async function embed(src, face, rec){
   return v.map(z=>z/norm);
 }
 
+function loadImg(file){   // <img>로 읽으면 사진 회전(EXIF)이 자동 반영되고 구형 아이폰에서도 동작
+  return new Promise((ok, bad) => { const u = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+      c.getContext("2d").drawImage(im, 0, 0); URL.revokeObjectURL(u); ok(c); };
+    im.onerror = () => { URL.revokeObjectURL(u); bad(new Error("사진을 열 수 없어요")); }; im.src = u; });
+}
 async function run(file){
   $("msg").style.display="none"; show("stepWork");
   $("workT").textContent = "사진을 찾고 있어요"; $("workS").textContent = "잠시만 기다려주세요";
   try {
-    const bmp = await createImageBitmap(file, {imageOrientation:"from-image"});
+    const bmp = await loadImg(file);
     const src = toCanvas(bmp, 1280);
     const {det, rec} = await loadModels();
     $("workS").textContent = "얼굴을 확인하고 있어요";
