@@ -143,6 +143,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
     <div class="grid" id="grid"></div>
     <button class="btn red" id="btnAll">⬇︎ 선택한 사진 저장하기</button>
     <p class="prog" id="prog"></p>
+    <button class="btn line" id="btnOne">한 장씩 저장하기</button>
     <button class="btn line" id="btnAgain">다른 셀카로 다시 찾기</button>
     <p class="tip">빼고 싶은 사진을 누르면 체크가 풀려요. 🔍를 누르면 크게 볼 수 있어요.<br>아이폰: 저장 버튼 → 공유창에서 <b>"이미지 저장"</b>을 누르면 사진 앱에 저장돼요.</p>
     <div class="review">
@@ -193,6 +194,11 @@ async function rpc(fn, body) {
 function show(step){ for (const s of ["stepStart","stepWork","stepResult"]) $(s).classList.toggle("hidden", s!==step); window.scrollTo(0,0); }
 function err(t){ show("stepStart"); const m=$("msg"); m.textContent=t; m.style.display="block"; }
 
+// ---------- 카카오톡 안에서 열리면 기본 브라우저로 자동 이동 (저장 기능 때문에) ----------
+if (/KAKAOTALK/i.test(navigator.userAgent)) {
+  let tried = false; try { tried = sessionStorage.getItem("pp_ext") === "1"; sessionStorage.setItem("pp_ext", "1"); } catch(e) {}
+  if (!tried) location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(location.href);
+}
 // ---------- 행사 정보 ----------
 (async () => {
   if (!SLUG) { $("evTitle").textContent = "링크를 다시 확인해주세요"; $("evSub").textContent = "선생님께 받은 링크로 들어와주세요."; return; }
@@ -331,13 +337,13 @@ const url = p => `${SUPA}/storage/v1/object/public/${BUCKET}/${p.path}`;
 const UA = navigator.userAgent, IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1),
       IS_AND = /Android/i.test(UA), IN_KAKAO = /KAKAOTALK/i.test(UA);
 const BATCH = 20;            // 아이폰 공유창 한 번에 보내는 장수
-let sel = new Set(), blobs = new Map(), batchStart = 0;
+let sel = new Set(), blobs = new Map(), batchStart = 0, oneIdx = 0;
 function selected(){ return photos.filter(p => sel.has(p.path)); }
 function render(){
   show("stepResult");
   $("resN").textContent = photos.length;
   const has = photos.length > 0;
-  for (const id of ["btnAll","selbar","prog"]) $(id).classList.toggle("hidden", !has);
+  for (const id of ["btnAll","selbar","prog","btnOne"]) $(id).classList.toggle("hidden", !has);
   $("resS").textContent = has ? "" : "찾은 사진이 없어요. 다른 셀카로 다시 시도해보세요.";
   $("kakao").style.display = has && IN_KAKAO ? "block" : "none";
   sel = new Set(photos.map(p => p.path)); batchStart = 0;
@@ -357,14 +363,16 @@ function showToast(){
   setTimeout(() => t.classList.add("show"), 350);          // 결과 화면이 뜬 뒤 살짝
   toastT = setTimeout(() => t.classList.remove("show"), 4200);   // 약 4초 보여주고 흐릿하게 사라짐
 }
-function toggle(path){ sel.has(path) ? sel.delete(path) : sel.add(path); batchStart = 0; updateSel(); }
+function toggle(path){ sel.has(path) ? sel.delete(path) : sel.add(path); batchStart = 0; oneIdx = 0; updateSel(); }
 $("selAll").onclick = () => { sel = new Set(photos.map(p=>p.path)); batchStart = 0; updateSel(); };
 $("selNone").onclick = () => { sel.clear(); batchStart = 0; updateSel(); };
 function updateSel(){
   for (const t of $("grid").children) t.classList.toggle("off", !sel.has(t.dataset.path));
   const list = selected(), n = list.length; $("selN").textContent = n;
   const ready = list.filter(p => blobs.has(p.path)).length;
-  const b = $("btnAll");
+  const b = $("btnAll"), o = $("btnOne");
+  o.disabled = !n || ready < n;
+  o.textContent = !n ? "한 장씩 저장하기" : oneIdx >= n ? `✓ ${n}장 모두 저장했어요 (처음부터 다시)` : oneIdx ? `다음 사진 저장 (${oneIdx+1}/${n})` : `한 장씩 저장하기 (누를 때마다 1장 · 총 ${n}장)`;
   if (!n) { b.disabled = true; b.textContent = "저장할 사진을 선택해주세요"; $("prog").textContent = ""; return; }
   if (ready < n) { b.disabled = true; b.textContent = `저장 준비 중… ${ready}/${n}`; $("prog").textContent = "사진을 미리 받아두는 중이에요"; return; }
   b.disabled = false;
@@ -388,10 +396,15 @@ async function preload(){
     next();
   });
 }
-function downloadFiles(files){
-  files.forEach((f, k) => setTimeout(() => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
-    document.body.appendChild(a); a.click(); a.remove(); }, k * 400));
-}
+function dl(f){ const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); }
+function downloadFiles(files){ files.forEach((f, k) => setTimeout(() => dl(f), k * 900)); }
+$("btnOne").onclick = () => {
+  const list = selected(); if (!list.length) return; if (oneIdx >= list.length) oneIdx = 0;
+  const f = blobs.get(list[oneIdx].path); if (!f) return;
+  if (IS_IOS && navigator.canShare && navigator.canShare({files:[f]})) navigator.share({files:[f]}).catch(()=>{});
+  else dl(f);
+  oneIdx++; updateSel();
+};
 async function zipFiles(files){
   $("prog").textContent = "ZIP 파일 만드는 중…";
   const z = new JSZip(); files.forEach(f => z.file(f.name, f));
@@ -412,7 +425,7 @@ function saveFiles(files){
     if (IN_KAKAO) { alert("카카오톡 안에서는 저장이 안 될 수 있어요. 위의 '기본 브라우저로 열기'를 눌러주세요."); return; }
     downloadFiles(files); return;
   }
-  if (IS_AND) { downloadFiles(files); $("prog").textContent = files.length > 1 ? "다운로드 폴더(갤러리)에 저장돼요. 여러 파일 다운로드 허용을 눌러주세요." : ""; return; }
+  if (IS_AND) { downloadFiles(files); $("prog").innerHTML = files.length > 1 ? "⚠️ <b>여러 파일 다운로드 허용</b> 창이 뜨면 허용을 눌러주세요.<br>1장만 받아졌다면 아래 <b>한 장씩 저장하기</b>를 이용해주세요." : ""; return; }
   if (files.length > 3 && window.JSZip) zipFiles(files); else downloadFiles(files);
 }
 $("btnAll").onclick = () => {
