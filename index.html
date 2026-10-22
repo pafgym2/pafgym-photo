@@ -76,6 +76,13 @@ label.btn{position:relative}
 .pickrow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0 2px}
 .pickrow img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:4px;display:block;background:var(--soft)}
 #vid{width:100%;border-radius:10px;background:#000;display:block;margin:4px 0 2px;max-height:70vh}
+.cam{position:fixed;inset:0;background:#000;z-index:30;display:flex;flex-direction:column}
+.cam video{flex:1;min-height:0;width:100%;object-fit:cover;transform:scaleX(-1)}
+.cam .guide{position:absolute;left:50%;top:40%;width:62vw;max-width:300px;aspect-ratio:3/4;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.75);border-radius:50%;pointer-events:none}
+.cam .ctip{position:absolute;left:0;right:0;top:calc(14px + env(safe-area-inset-top));text-align:center;color:#fff;font-size:14px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.cam .cbar{display:flex;align-items:center;justify-content:space-between;padding:18px 24px calc(18px + env(safe-area-inset-bottom));background:#000}
+.cam .cbar button{background:none;border:0;color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;min-width:70px}
+.cam .shutter{width:74px;height:74px;border-radius:50%;background:#fff !important;border:5px solid #C8102E !important;min-width:0 !important}
 .prog{font-size:12.5px;color:var(--sub);text-align:center;margin-top:8px;min-height:18px}
 .viewer{position:fixed;inset:0;background:#000;z-index:10;display:flex;flex-direction:column}
 .viewer img{flex:1;min-height:0;width:100%;object-fit:contain}
@@ -180,6 +187,12 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 </div>
 
 <div class="toast" id="toast"><div class="ex"><span><i class="dot on">✓</i>저장</span><span><i class="dot no"></i>빼기</span></div>모든 사진이 선택되어 있어요.<br><b>빼고 싶은 사진을 누르면</b> 체크가 풀려요.<br>다시 누르면 다시 선택돼요.</div>
+<div class="cam hidden" id="cam">
+  <video id="camV" autoplay playsinline muted></video>
+  <div class="guide"></div>
+  <div class="ctip">동그라미 안에 얼굴을 맞추고 촬영해주세요</div>
+  <div class="cbar"><button id="camX">취소</button><button class="shutter" id="camShot" aria-label="촬영"></button><button id="camAlbum">앨범</button></div>
+</div>
 <div class="viewer hidden" id="viewer">
   <div class="vtop"><span id="vIdx"></span><button id="vClose" aria-label="닫기">×</button></div>
   <img id="vImg" alt="">
@@ -275,6 +288,32 @@ for (const id of ["btnCam","btnPick"]) $(id).addEventListener("click", e => {   
   (!$("agree").checked ? $("agree") : $("code")).scrollIntoView({block:"center", behavior:"smooth"});
   report("blocked", need.replace(/<[^>]+>/g, ""));
 });
+// 안드로이드: 브라우저가 capture="user"를 무시하고 갤러리를 여는 경우가 많아 페이지 안에서 전면 카메라를 직접 띄움
+let camStream = null;
+$("btnCam").addEventListener("click", e => {
+  if ($("btnCam").classList.contains("off") || !IS_AND || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return;
+  e.preventDefault(); openCam();
+});
+async function openCam(){
+  $("msg").style.display = "none";
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user", width:{ideal:1280}, height:{ideal:1280}}, audio:false});
+    $("camV").srcObject = camStream; $("cam").classList.remove("hidden");
+  } catch(e) {
+    report("cam", e.name + " " + e.message);
+    const m = $("msg"); m.style.display = "block";
+    m.innerHTML = e.name === "NotAllowedError" ? "📷 카메라 권한이 막혀 있어요. 주소창 옆 <b>자물쇠 → 권한 → 카메라 허용</b> 후 다시 눌러주세요.<br>또는 아래 <b>앨범에서 내 사진 고르기</b>를 이용해주세요."
+                                              : "📷 카메라를 열 수 없어요. 아래 <b>앨범에서 내 사진 고르기</b>를 이용해주세요.";
+  }
+}
+function closeCam(){ if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $("cam").classList.add("hidden"); }
+$("camX").onclick = closeCam;
+$("camAlbum").onclick = () => { closeCam(); $("fPick").click(); };
+$("camShot").onclick = () => {
+  const v = $("camV"); if (!v.videoWidth) return;
+  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0); closeCam(); run(c);
+};
 $("fCam").onchange = $("fPick").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) run(f); };
 $("btnAgain").onclick = () => { show("stepStart"); };
 // ---------- 이달의 포토제닉 (입장코드만 있으면 참가자 모두 열람) ----------
@@ -399,12 +438,12 @@ async function run(file){
   $("msg").style.display="none"; show("stepWork");
   $("workT").textContent = "사진을 찾고 있어요"; $("workS").textContent = "잠시만 기다려주세요";
   try {
-    const bmp = await loadImg(file);
+    const bmp = file instanceof HTMLCanvasElement ? file : await loadImg(file);
     const src = toCanvas(bmp, 1280);
     const {det, rec} = await loadModels();
     $("workS").textContent = "얼굴을 확인하고 있어요";
     const faces = await detect(src, det);
-    if (!faces.length) { report("noface", `${src.width}x${src.height} ${file.type} ${Math.round(file.size/1024)}KB`); return err("얼굴을 찾지 못했어요. 밝은 곳에서 정면으로 다시 찍어주세요."); }
+    if (!faces.length) { report("noface", `${src.width}x${src.height} ${file.type||"camera"} ${Math.round((file.size||0)/1024)}KB`); return err("얼굴을 찾지 못했어요. 밝은 곳에서 정면으로 다시 찍어주세요."); }
     const face = faces.reduce((a,b)=> a.w*a.h > b.w*b.h ? a : b);   // 가장 크게 나온 얼굴
     const emb = await embed(src, face, rec);
     // 동그란 셀카 미리보기 (폰 안에서만 표시)
