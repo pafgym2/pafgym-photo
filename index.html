@@ -182,7 +182,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 
   <footer>
     본 페이지는 파프짐 행사 참가 회원 전용입니다. 얼굴 인식은 회원님 기기에서 처리되며, 셀카 원본은 어디에도 저장되지 않습니다.
-    문의: 담당 선생님 또는 파프짐 지점
+    문의: 담당 선생님 또는 파프짐 지점 <span style="color:#ccc" id="buildV"></span>
   </footer>
 </div>
 
@@ -202,7 +202,19 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.wasm.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
+const BUILD = "20261022-1700";   // 배포할 때마다 바꿈 → 예전 버전이 열리면 자동으로 최신으로 새로고침
 const SUPA = "https://dzmxwsxcwtugnyyfvnja.supabase.co";
+document.getElementById("buildV").textContent = "· v" + BUILD;
+(async () => {
+  try {
+    const t = await (await fetch(location.pathname + "?bv=" + Date.now(), {cache: "no-store"})).text();
+    const m = t.match(/const BUILD = "([^"]+)"/);
+    if (m && m[1] !== BUILD) {
+      const u = new URL(location.href);
+      if (u.searchParams.get("bv") !== m[1]) { u.searchParams.set("bv", m[1]); location.replace(u.toString()); }
+    }
+  } catch(e) {}
+})();
 const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6bXh3c3hjd3R1Z255eWZ2bmphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMzUxNjcsImV4cCI6MjA5NjgxMTE2N30.PkzQD7JJuFdtMGWzm2FC9HFzf1wVW1Wh9wg41SxJKzg";
 const BUCKET = "pafgym-photos";
 const qs = new URLSearchParams(location.search);
@@ -291,8 +303,11 @@ for (const id of ["btnCam","btnPick"]) $(id).addEventListener("click", e => {   
 // 안드로이드: 브라우저가 capture="user"를 무시하고 갤러리를 여는 경우가 많아 페이지 안에서 전면 카메라를 직접 띄움
 let camStream = null;
 $("btnCam").addEventListener("click", e => {
-  if ($("btnCam").classList.contains("off") || !IS_AND || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return;
-  e.preventDefault(); openCam();
+  if ($("btnCam").classList.contains("off")) return;
+  const gum = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  // 아이폰이 아니면 모두 페이지 안 카메라 (삼성인터넷 데스크톱 모드 등 UA에 Android가 없는 경우 포함)
+  if (IS_IOS || !gum) { report("cam-file", `ios=${IS_IOS} gum=${gum}`); return; }
+  e.preventDefault(); report("cam-open", `and=${IS_AND} build=${BUILD}`); openCam();
 });
 async function openCam(){
   $("msg").style.display = "none";
