@@ -131,6 +131,8 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
     </div>
     <div class="card">
       <h2><i>03</i>셀카로 찾기</h2>
+      <div class="kakao" id="inappTop">지금 <b>앱 안의 브라우저</b>로 열려 있어 셀카가 안 될 수 있어요.<br>아래 버튼으로 <b>삼성인터넷·크롬·사파리</b>에서 열어주세요.
+        <button id="btnExt2">기본 브라우저로 열기</button></div>
       <label class="btn red off" id="btnCam">📷 셀카 찍고 내 사진 찾기<input type="file" id="fCam" accept="image/*" capture="user" class="vh"></label>
       <label class="btn line off" id="btnPick">앨범에서 내 사진 고르기<input type="file" id="fPick" accept="image/*" class="vh"></label>
       <p class="tip">모자·선글라스를 벗고, 밝은 곳에서 정면으로 찍으면 더 잘 찾아요.</p>
@@ -161,7 +163,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
   <div id="stepResult" class="hidden">
     <div class="selfie"><img id="selfieImg" alt=""></div>
     <div class="resh"><b><span id="resL">내 사진</span> <em id="resN">0</em>장</b><span id="resS"></span></div>
-    <div class="kakao" id="kakao">카카오톡 안에서는 사진 여러 장 저장이 잘 안 돼요.<br><b>사파리(삼성인터넷·크롬)로 열면</b> 한 번에 저장할 수 있어요.
+    <div class="kakao" id="kakao">카카오톡·라인 안에서는 셀카·사진 저장이 잘 안 돼요.<br><b>사파리(삼성인터넷·크롬)로 열면</b> 한 번에 저장할 수 있어요.
       <button id="btnExt">기본 브라우저로 열기</button></div>
     <div class="selbar" id="selbar"><b>선택 <em id="selN">0</em>장</b><button id="selAll">전체 선택</button><button id="selNone">전체 해제</button></div>
     <div class="grid" id="grid"></div>
@@ -202,7 +204,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.wasm.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-const BUILD = "20261022-1700";   // 배포할 때마다 바꿈 → 예전 버전이 열리면 자동으로 최신으로 새로고침
+const BUILD = "20261022-1720";   // 배포할 때마다 바꿈 → 예전 버전이 열리면 자동으로 최신으로 새로고침
 const SUPA = "https://dzmxwsxcwtugnyyfvnja.supabase.co";
 document.getElementById("buildV").textContent = "· v" + BUILD;
 (async () => {
@@ -246,6 +248,11 @@ async function rpc(fn, body) {
 function show(step){ for (const s of ["stepStart","stepWork","stepResult"]) $(s).classList.toggle("hidden", s!==step); window.scrollTo(0,0); }
 function err(t){ show("stepStart"); const m=$("msg"); m.textContent=t; m.style.display="block"; }
 
+// ---------- 라인 안에서 열리면 기본 브라우저로 (라인 내장 브라우저는 카메라 권한을 막음) ----------
+if (/\bLine\//i.test(navigator.userAgent)) {
+  const u = new URL(location.href);
+  if (u.searchParams.get("openExternalBrowser") !== "1") { u.searchParams.set("openExternalBrowser", "1"); location.replace(u.toString()); }
+}
 // ---------- 카카오톡 안에서 열리면 기본 브라우저로 자동 이동 (저장 기능 때문에) ----------
 if (/KAKAOTALK/i.test(navigator.userAgent)) {
   let tried = false; try { tried = sessionStorage.getItem("pp_ext") === "1"; sessionStorage.setItem("pp_ext", "1"); } catch(e) {}
@@ -306,7 +313,7 @@ $("btnCam").addEventListener("click", e => {
   if ($("btnCam").classList.contains("off")) return;
   const gum = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   // 아이폰이 아니면 모두 페이지 안 카메라 (삼성인터넷 데스크톱 모드 등 UA에 Android가 없는 경우 포함)
-  if (IS_IOS || !gum) { report("cam-file", `ios=${IS_IOS} gum=${gum}`); return; }
+  if (IS_IOS || !gum || IN_APP) { report("cam-file", `ios=${IS_IOS} gum=${gum} inapp=${IN_APP}`); return; }
   e.preventDefault(); report("cam-open", `and=${IS_AND} build=${BUILD}`); openCam();
 });
 async function openCam(){
@@ -476,7 +483,10 @@ async function run(file){
 }
 const url = p => `${SUPA}/storage/v1/object/public/${BUCKET}/${p.path}`;
 const UA = navigator.userAgent, IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1),
-      IS_AND = /Android/i.test(UA), IN_KAKAO = /KAKAOTALK/i.test(UA);
+      IS_AND = /Android/i.test(UA), IN_KAKAO = /KAKAOTALK/i.test(UA),
+      IN_APP = /\bLine\/|KAKAOTALK|Instagram|FBAN|FBAV|NAVER\(inapp|; wv\)/i.test(UA);   // 앱 내장 브라우저(카메라 권한 막힘)
+if (IN_APP) { $("inappTop").style.display = "block"; }
+$("btnExt2").onclick = () => $("btnExt").onclick();
 const BATCH = 20;            // 아이폰 공유창 한 번에 보내는 장수
 let sel = new Set(), blobs = new Map(), batchStart = 0, oneIdx = 0;
 function selected(){ return photos.filter(p => sel.has(p.path)); }
@@ -493,7 +503,7 @@ function render(){
   sw.textContent = !pick ? `📸 이달의 포토제닉 ${featured.length}장 보기` : myPhotos.length ? `← 내 사진 ${myPhotos.length}장 다시 보기` : "📷 셀카로 내 사진 찾기";
   for (const id of ["btnAll","selbar","prog","btnOne"]) $(id).classList.toggle("hidden", !has);
   $("resS").textContent = has ? "" : "찾은 사진이 없어요. 다른 셀카로 다시 시도해보세요.";
-  $("kakao").style.display = has && IN_KAKAO ? "block" : "none";
+  $("kakao").style.display = has && IN_APP ? "block" : "none";
   sel = new Set(photos.map(p => p.path)); batchStart = 0;
   const g = $("grid"); g.innerHTML = "";
   photos.forEach((p,i) => {
@@ -605,8 +615,8 @@ $("btnAll").onclick = () => {
   saveFiles(list.map(p => blobs.get(p.path)).filter(Boolean));
 };
 $("btnExt").onclick = () => {
-  const u = location.href;
-  location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(u);
+  if (IN_KAKAO) { location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(location.href); return; }
+  const u = new URL(location.href); u.searchParams.set("openExternalBrowser", "1"); location.href = u.toString();
 };
 function openV(i){ cur=(i+photos.length)%photos.length; $("vImg").src=url(photos[cur]); $("vIdx").textContent=(cur+1)+" / "+photos.length; $("viewer").classList.remove("hidden"); }
 $("vClose").onclick = () => $("viewer").classList.add("hidden");
