@@ -35,7 +35,7 @@ input.code:focus{outline:none;border-color:var(--ink)}
 .btn.red{background:var(--red)}
 .vh{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;overflow:hidden}
 label.btn{position:relative}
-.btn.off{background:#ccc;border-color:#ccc;color:#fff;pointer-events:none}
+.btn.off{background:#ccc;border-color:#ccc;color:#fff}
 .ok{color:#0a7a3d;font-weight:800}
 .msgc{color:var(--red);font-weight:700}
 .btn:disabled{background:#ccc;border-color:#ccc;color:#fff;cursor:not-allowed}
@@ -202,6 +202,12 @@ ort.env.wasm.numThreads = 1;
 ort.env.logLevel = "error";
 
 let photos = [], cur = 0, models = null;
+function report(stage, msg){   // 기기·오류 내용만 기록 (사진·얼굴·개인정보 없음)
+  try { fetch(`${SUPA}/rest/v1/rpc/photo_report`, {method:"POST", keepalive:true,
+    headers:{apikey:ANON, Authorization:"Bearer "+ANON, "Content-Type":"application/json"},
+    body:JSON.stringify({p_slug:SLUG, p_device:DEVICE||"", p_stage:stage, p_msg:String(msg).slice(0,300), p_ua:navigator.userAgent})}); } catch(e) {}
+}
+window.addEventListener("error", e => report("js", e.message));
 let DEVICE = "";
 try { DEVICE = localStorage.getItem("pp_dev") || ""; if (!DEVICE) { DEVICE = crypto.randomUUID(); localStorage.setItem("pp_dev", DEVICE); } } catch(e) { DEVICE = "nostore-" + Math.random().toString(36).slice(2); }
 
@@ -261,6 +267,14 @@ function gateMsg(r){
     : "문제가 생겼어요. 잠시 후 다시 시도해주세요.";
 }
 
+for (const id of ["btnCam","btnPick"]) $(id).addEventListener("click", e => {   // 준비 전에 누르면 이유를 알려줌
+  if (!$(id).classList.contains("off")) return;
+  e.preventDefault();
+  const need = !$("agree").checked ? "01 개인정보 안내의 <b>동의 체크</b>를 먼저 해주세요." : !codeOk ? "02 <b>입장코드</b>를 먼저 입력해주세요." : "";
+  const m = $("msg"); m.innerHTML = "☝️ " + need; m.style.display = "block";
+  (!$("agree").checked ? $("agree") : $("code")).scrollIntoView({block:"center", behavior:"smooth"});
+  report("blocked", need.replace(/<[^>]+>/g, ""));
+});
 $("fCam").onchange = $("fPick").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) run(f); };
 $("btnAgain").onclick = () => { show("stepStart"); };
 // ---------- 이달의 포토제닉 (입장코드만 있으면 참가자 모두 열람) ----------
@@ -375,8 +389,10 @@ async function embed(src, face, rec){
 
 function loadImg(file){   // <img>로 읽으면 사진 회전(EXIF)이 자동 반영되고 구형 아이폰에서도 동작
   return new Promise((ok, bad) => { const u = URL.createObjectURL(file), im = new Image();
-    im.onload = () => { const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
-      c.getContext("2d").drawImage(im, 0, 0); URL.revokeObjectURL(u); ok(c); };
+    im.onload = () => {   // 원본 크기로 펼치지 않고 바로 1600px로 줄여 그림 (아이폰은 약 1670만 화소 넘는 캔버스를 못 만듦 → 24·48MP 사진 실패)
+      const s = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+      const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(im.naturalWidth*s)); c.height = Math.max(1, Math.round(im.naturalHeight*s));
+      const x = c.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); ok(c); };
     im.onerror = () => { URL.revokeObjectURL(u); bad(new Error("사진을 열 수 없어요")); }; im.src = u; });
 }
 async function run(file){
@@ -388,7 +404,7 @@ async function run(file){
     const {det, rec} = await loadModels();
     $("workS").textContent = "얼굴을 확인하고 있어요";
     const faces = await detect(src, det);
-    if (!faces.length) return err("얼굴을 찾지 못했어요. 밝은 곳에서 정면으로 다시 찍어주세요.");
+    if (!faces.length) { report("noface", `${src.width}x${src.height} ${file.type} ${Math.round(file.size/1024)}KB`); return err("얼굴을 찾지 못했어요. 밝은 곳에서 정면으로 다시 찍어주세요."); }
     const face = faces.reduce((a,b)=> a.w*a.h > b.w*b.h ? a : b);   // 가장 크게 나온 얼굴
     const emb = await embed(src, face, rec);
     // 동그란 셀카 미리보기 (폰 안에서만 표시)
@@ -400,6 +416,7 @@ async function run(file){
     if (res.status !== "ok") return err(gateMsg(res));
     photos = myPhotos = res.photos; mode = "mine"; render();
   } catch(e) {
+    report("run", String(e.message||e));
     err("문제가 생겼어요. 잠시 후 다시 시도해주세요. (" + String(e.message||e) + ")");
   }
 }
