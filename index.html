@@ -204,7 +204,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.wasm.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-const BUILD = "20261022-1720";   // 배포할 때마다 바꿈 → 예전 버전이 열리면 자동으로 최신으로 새로고침
+const BUILD = "20261022-1800";   // 배포할 때마다 바꿈 → 예전 버전이 열리면 자동으로 최신으로 새로고침
 const SUPA = "https://dzmxwsxcwtugnyyfvnja.supabase.co";
 document.getElementById("buildV").textContent = "· v" + BUILD;
 (async () => {
@@ -229,6 +229,16 @@ ort.env.wasm.numThreads = 1;
 ort.env.logLevel = "error";
 
 let photos = [], cur = 0, models = null;
+function track(action, n){   // 이용 통계: 폰 기준 무작위 ID·행동·장수만 (사진·얼굴·개인정보 없음)
+  try {
+    const ua = navigator.userAgent;
+    const env = (/iPhone|iPad|iPod/.test(ua) ? "ios" : /Android/i.test(ua) ? "android" : "pc") +
+                (/\bLine\//i.test(ua) ? "-line" : /KAKAOTALK/i.test(ua) ? "-kakao" : /SamsungBrowser/i.test(ua) ? "-samsung" : "");
+    fetch(`${SUPA}/rest/v1/rpc/photo_track`, {method:"POST", keepalive:true,
+      headers:{apikey:ANON, Authorization:"Bearer "+ANON, "Content-Type":"application/json"},
+      body:JSON.stringify({p_slug:SLUG, p_device:(typeof DEVICE !== "undefined" && DEVICE) || "", p_action:action, p_n:n ?? null, p_env:env})});
+  } catch(e) {}
+}
 function report(stage, msg){   // 기기·오류 내용만 기록 (사진·얼굴·개인정보 없음)
   try { fetch(`${SUPA}/rest/v1/rpc/photo_report`, {method:"POST", keepalive:true,
     headers:{apikey:ANON, Authorization:"Bearer "+ANON, "Content-Type":"application/json"},
@@ -264,6 +274,7 @@ if (/KAKAOTALK/i.test(navigator.userAgent)) {
   try {
     const [ev] = await rpc("photo_event_info", {p_slug: SLUG});
     if (!ev) throw 0;
+    track("visit");
     $("evTitle").textContent = ev.title;
     $("evDate").textContent = (ev.event_date||"").replaceAll("-",".") + " · 사진 " + ev.photo_count + "장";
     if (ev.expired) { $("evSub").textContent = "공개 기간이 끝난 행사입니다."; $("stepStart").classList.add("hidden"); }
@@ -283,7 +294,7 @@ async function checkCode(){
   try {
     const r = await rpc("photo_check_code", {p_slug:SLUG, p_code:v, p_device:DEVICE});
     if (my !== checking) return;
-    if (r.status === "ok") { codeOk = true; codeState("✓ 입장코드가 확인됐어요" + ($("agree").checked ? "" : " · 위의 동의 체크를 해주세요"), "ok"); loadFeatured(v); }
+    if (r.status === "ok") { codeOk = true; track("code_ok"); codeState("✓ 입장코드가 확인됐어요" + ($("agree").checked ? "" : " · 위의 동의 체크를 해주세요"), "ok"); loadFeatured(v); }
     else codeState(gateMsg(r), "msgc");
   } catch(e) { if (my === checking) codeState("인터넷 연결을 확인해주세요."); }
   updateBtns();
@@ -374,7 +385,7 @@ async function fetchVideo(){
   } catch(e) { $("vidProg").textContent = "영상을 받지 못했어요. 다시 눌러주세요."; }
   vidLoading = false; updateVidBtn();
   if (vidFile && IS_IOS) $("vidProg").innerHTML = "✓ 준비 완료! <b>한 번 더 눌러서</b> 저장해주세요";
-  else if (vidFile) dl(vidFile);
+  else if (vidFile) { dl(vidFile); track("video_save"); }
 }
 $("btnVid").onclick = () => {
   if (!vidFile) { fetchVideo(); return; }
@@ -492,6 +503,7 @@ let sel = new Set(), blobs = new Map(), batchStart = 0, oneIdx = 0;
 function selected(){ return photos.filter(p => sel.has(p.path)); }
 function render(){
   show("stepResult");
+  track(mode === "pick" ? "pick_open" : "mine_open", photos.length);
   $("resN").textContent = photos.length;
   const has = photos.length > 0, pick = mode === "pick";
   $("resL").textContent = pick ? "📸 이달의 포토제닉" : "내 사진";
@@ -609,6 +621,14 @@ function saveFiles(files){
   }
   if (files.length > 3 && window.JSZip) zipFiles(files); else downloadFiles(files);
 }
+$("btnAll").addEventListener("click", () => { let k = selected().length; if (IS_IOS && k > BATCH) k = Math.min(BATCH, k - batchStart); track(mode + "_save", k); });
+$("btnOne").addEventListener("click", () => track(mode + "_save1", 1));
+$("vSave").addEventListener("click", () => track(mode + "_save1", 1));
+$("btnExt").addEventListener("click", () => track("ext_open"));
+document.querySelector(".review a").addEventListener("click", () => track("review"));
+let vidPlayed = false;
+$("vid").addEventListener("play", () => { if (!vidPlayed) { vidPlayed = true; track("video_play"); } });
+$("btnVid").addEventListener("click", () => track(vidFile ? "video_save" : "video_prep"));
 $("btnAll").onclick = () => {
   let list = selected();
   if (IS_IOS && list.length > BATCH) list = list.slice(batchStart, batchStart + BATCH);
