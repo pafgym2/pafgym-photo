@@ -71,6 +71,10 @@ label.btn{position:relative}
 .toast .dot{width:20px;height:20px;border-radius:50%;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
 .toast .dot.on{background:var(--red)}
 .toast .dot.no{background:rgba(255,255,255,.2)}
+.pick{border-color:#111;background:linear-gradient(180deg,#fff, #fafafa)}
+.pick h2 i{font-style:normal}
+.pickrow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0 2px}
+.pickrow img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:4px;display:block;background:var(--soft)}
 .prog{font-size:12.5px;color:var(--sub);text-align:center;margin-top:8px;min-height:18px}
 .viewer{position:fixed;inset:0;background:#000;z-index:10;display:flex;flex-direction:column}
 .viewer img{flex:1;min-height:0;width:100%;object-fit:contain}
@@ -124,6 +128,12 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
       <p class="tip">모자·선글라스를 벗고, 밝은 곳에서 정면으로 찍으면 더 잘 찾아요.</p>
       <p class="msg" id="msg"></p>
     </div>
+    <div class="card pick hidden" id="pickCard">
+      <h2><i>📸</i> 이달의 포토제닉</h2>
+      <div class="pickrow" id="pickRow"></div>
+      <p class="tip">셀카 없이 바로 볼 수 있어요. 참가자 모두에게 공개되는 이달의 베스트 컷이에요.</p>
+      <button class="btn" id="btnPickShow">포토제닉 <span id="pickN"></span>장 보고 저장하기</button>
+    </div>
   </div>
 
   <!-- 2. 처리 중 -->
@@ -136,7 +146,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
   <!-- 3. 결과 -->
   <div id="stepResult" class="hidden">
     <div class="selfie"><img id="selfieImg" alt=""></div>
-    <div class="resh"><b>내 사진 <em id="resN">0</em>장</b><span id="resS"></span></div>
+    <div class="resh"><b><span id="resL">내 사진</span> <em id="resN">0</em>장</b><span id="resS"></span></div>
     <div class="kakao" id="kakao">카카오톡 안에서는 사진 여러 장 저장이 잘 안 돼요.<br><b>사파리(삼성인터넷·크롬)로 열면</b> 한 번에 저장할 수 있어요.
       <button id="btnExt">기본 브라우저로 열기</button></div>
     <div class="selbar" id="selbar"><b>선택 <em id="selN">0</em>장</b><button id="selAll">전체 선택</button><button id="selNone">전체 해제</button></div>
@@ -144,6 +154,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
     <button class="btn red" id="btnAll">⬇︎ 선택한 사진 저장하기</button>
     <p class="prog" id="prog"></p>
     <button class="btn line" id="btnOne">한 장씩 저장하기</button>
+    <button class="btn line" id="btnSwitch"></button>
     <button class="btn line" id="btnAgain">다른 셀카로 다시 찾기</button>
     <p class="tip">빼고 싶은 사진을 누르면 체크가 풀려요. 🔍를 누르면 크게 볼 수 있어요.<br>아이폰: 저장 버튼 → 공유창에서 <b>"이미지 저장"</b>을 누르면 사진 앱에 저장돼요.</p>
     <div class="review">
@@ -226,7 +237,7 @@ async function checkCode(){
   try {
     const r = await rpc("photo_check_code", {p_slug:SLUG, p_code:v, p_device:DEVICE});
     if (my !== checking) return;
-    if (r.status === "ok") { codeOk = true; codeState("✓ 입장코드가 확인됐어요" + ($("agree").checked ? "" : " · 위의 동의 체크를 해주세요"), "ok"); }
+    if (r.status === "ok") { codeOk = true; codeState("✓ 입장코드가 확인됐어요" + ($("agree").checked ? "" : " · 위의 동의 체크를 해주세요"), "ok"); loadFeatured(v); }
     else codeState(gateMsg(r), "msgc");
   } catch(e) { if (my === checking) codeState("인터넷 연결을 확인해주세요."); }
   updateBtns();
@@ -244,6 +255,23 @@ function gateMsg(r){
 
 $("fCam").onchange = $("fPick").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) run(f); };
 $("btnAgain").onclick = () => { show("stepStart"); };
+// ---------- 이달의 포토제닉 (입장코드만 있으면 참가자 모두 열람) ----------
+let mode = "mine", myPhotos = [], featured = [];
+async function loadFeatured(code){
+  try {
+    const r = await rpc("photo_featured", {p_slug:SLUG, p_code:code, p_device:DEVICE});
+    featured = r.status === "ok" ? r.photos : [];
+  } catch(e) { featured = []; }
+  $("pickCard").classList.toggle("hidden", !featured.length);
+  $("pickN").textContent = featured.length;
+  $("pickRow").innerHTML = featured.slice(0,4).map(p => `<img alt="" src="${url(p)}">`).join("");
+}
+$("btnPickShow").onclick = () => { mode = "pick"; photos = featured; render(); };
+$("btnSwitch").onclick = () => {
+  if (mode === "mine") { mode = "pick"; photos = featured; render(); }
+  else if (myPhotos.length) { mode = "mine"; photos = myPhotos; render(); }
+  else show("stepStart");
+};
 
 // ---------- 얼굴 처리 (맥 도구와 같은 방식: YuNet + SFace) ----------
 async function loadModels(){
@@ -330,7 +358,7 @@ async function run(file){
     $("workS").textContent = "행사 사진과 비교하고 있어요";
     const res = await rpc("photo_find", {p_slug:SLUG, p_code:$("code").value.trim(), p_emb:emb, p_device:DEVICE});
     if (res.status !== "ok") return err(gateMsg(res));
-    photos = res.photos; render();
+    photos = myPhotos = res.photos; mode = "mine"; render();
   } catch(e) {
     err("문제가 생겼어요. 잠시 후 다시 시도해주세요. (" + String(e.message||e) + ")");
   }
@@ -344,7 +372,13 @@ function selected(){ return photos.filter(p => sel.has(p.path)); }
 function render(){
   show("stepResult");
   $("resN").textContent = photos.length;
-  const has = photos.length > 0;
+  const has = photos.length > 0, pick = mode === "pick";
+  $("resL").textContent = pick ? "📸 이달의 포토제닉" : "내 사진";
+  document.querySelector(".selfie").style.display = pick ? "none" : "flex";
+  $("btnAgain").classList.toggle("hidden", pick);
+  const sw = $("btnSwitch");
+  sw.classList.toggle("hidden", !pick && !featured.length);
+  sw.textContent = !pick ? `📸 이달의 포토제닉 ${featured.length}장 보기` : myPhotos.length ? `← 내 사진 ${myPhotos.length}장 다시 보기` : "📷 셀카로 내 사진 찾기";
   for (const id of ["btnAll","selbar","prog","btnOne"]) $(id).classList.toggle("hidden", !has);
   $("resS").textContent = has ? "" : "찾은 사진이 없어요. 다른 셀카로 다시 시도해보세요.";
   $("kakao").style.display = has && IN_KAKAO ? "block" : "none";
