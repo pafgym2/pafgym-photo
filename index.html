@@ -276,6 +276,7 @@ async function loadFeatured(code){
   $("pickCard").classList.toggle("hidden", !featured.length);
   video = (r && r.video) || null;
   $("videoCard").classList.toggle("hidden", !video);
+  if (video) $("vid").poster = video.poster ? url({path: video.poster}) : "";
   if (video && $("vid").dataset.path !== video.path) { $("vid").dataset.path = video.path; $("vid").src = url(video); vidFile = null; updateVidBtn(); }
   $("pickN").textContent = featured.length;
   $("pickRow").innerHTML = featured.slice(0,4).map(p => `<img alt="" src="${url(p)}">`).join("");
