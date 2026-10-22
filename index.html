@@ -75,6 +75,7 @@ label.btn{position:relative}
 .pick h2 i{font-style:normal}
 .pickrow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0 2px}
 .pickrow img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:4px;display:block;background:var(--soft)}
+#vid{width:100%;border-radius:10px;background:#000;display:block;margin:4px 0 2px;max-height:70vh}
 .prog{font-size:12.5px;color:var(--sub);text-align:center;margin-top:8px;min-height:18px}
 .viewer{position:fixed;inset:0;background:#000;z-index:10;display:flex;flex-direction:column}
 .viewer img{flex:1;min-height:0;width:100%;object-fit:contain}
@@ -128,6 +129,12 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
       <p class="tip">모자·선글라스를 벗고, 밝은 곳에서 정면으로 찍으면 더 잘 찾아요.</p>
       <p class="msg" id="msg"></p>
     </div>
+    <div class="card pick hidden" id="videoCard">
+      <h2><i>🎬</i> 이달의 선데이런데이 영상</h2>
+      <video id="vid" controls playsinline preload="metadata"></video>
+      <button class="btn" id="btnVid">⬇︎ 영상 저장하기</button>
+      <p class="prog" id="vidProg"></p>
+    </div>
     <div class="card pick hidden" id="pickCard">
       <h2><i>📸</i> 이달의 포토제닉</h2>
       <div class="pickrow" id="pickRow"></div>
@@ -155,6 +162,7 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
     <p class="prog" id="prog"></p>
     <button class="btn line" id="btnOne">한 장씩 저장하기</button>
     <button class="btn line" id="btnSwitch"></button>
+    <button class="btn line hidden" id="btnToVideo">🎬 이달의 영상 보기</button>
     <button class="btn line" id="btnAgain">다른 셀카로 다시 찾기</button>
     <p class="tip">빼고 싶은 사진을 누르면 체크가 풀려요. 🔍를 누르면 크게 볼 수 있어요.<br>아이폰: 저장 버튼 → 공유창에서 <b>"이미지 저장"</b>을 누르면 사진 앱에 저장돼요.</p>
     <div class="review">
@@ -257,16 +265,47 @@ $("fCam").onchange = $("fPick").onchange = e => { const f = e.target.files[0]; e
 $("btnAgain").onclick = () => { show("stepStart"); };
 // ---------- 이달의 포토제닉 (입장코드만 있으면 참가자 모두 열람) ----------
 let mode = "mine", myPhotos = [], featured = [];
+let video = null, vidFile = null, vidLoading = false;
 async function loadFeatured(code){
+  let r = null;
   try {
-    const r = await rpc("photo_featured", {p_slug:SLUG, p_code:code, p_device:DEVICE});
+    r = await rpc("photo_featured", {p_slug:SLUG, p_code:code, p_device:DEVICE});
     featured = r.status === "ok" ? r.photos : [];
+    if (r.status !== "ok") r = null;
   } catch(e) { featured = []; }
   $("pickCard").classList.toggle("hidden", !featured.length);
+  video = (r && r.video) || null;
+  $("videoCard").classList.toggle("hidden", !video);
+  if (video && $("vid").dataset.path !== video.path) { $("vid").dataset.path = video.path; $("vid").src = url(video); vidFile = null; updateVidBtn(); }
   $("pickN").textContent = featured.length;
   $("pickRow").innerHTML = featured.slice(0,4).map(p => `<img alt="" src="${url(p)}">`).join("");
 }
 $("btnPickShow").onclick = () => { mode = "pick"; photos = featured; render(); };
+// 영상 저장: 아이폰은 '누른 순간' 공유창이 떠야 해서, 먼저 받아두고 → 다시 눌러 저장
+function updateVidBtn(pct){
+  const b = $("btnVid");
+  if (vidFile) { b.disabled = false; b.textContent = "⬇︎ 영상 저장하기"; $("vidProg").textContent = IS_IOS ? "공유창에서 \"비디오 저장\"을 누르면 사진 앱에 저장돼요" : ""; }
+  else if (vidLoading) { b.disabled = true; b.textContent = `영상 받는 중… ${pct||0}%`; }
+  else { b.disabled = false; b.textContent = "⬇︎ 영상 저장하기"; $("vidProg").textContent = ""; }
+}
+async function fetchVideo(){
+  vidLoading = true; updateVidBtn(0);
+  try {
+    const res = await fetch(url(video)); const total = +res.headers.get("content-length") || 0;
+    const reader = res.body.getReader(); const chunks = []; let got = 0;
+    for (;;) { const {done, value} = await reader.read(); if (done) break; chunks.push(value); got += value.length; if (total) updateVidBtn(Math.round(got/total*100)); }
+    vidFile = new File(chunks, video.name || "PAFGYM.mp4", {type:"video/mp4"});
+  } catch(e) { $("vidProg").textContent = "영상을 받지 못했어요. 다시 눌러주세요."; }
+  vidLoading = false; updateVidBtn();
+  if (vidFile && IS_IOS) $("vidProg").innerHTML = "✓ 준비 완료! <b>한 번 더 눌러서</b> 저장해주세요";
+  else if (vidFile) dl(vidFile);
+}
+$("btnVid").onclick = () => {
+  if (!vidFile) { fetchVideo(); return; }
+  if (IS_IOS && navigator.canShare && navigator.canShare({files:[vidFile]})) navigator.share({files:[vidFile]}).catch(()=>{});
+  else dl(vidFile);
+};
+$("btnToVideo").onclick = () => { show("stepStart"); setTimeout(() => $("videoCard").scrollIntoView({block:"start", behavior:"smooth"}), 50); };
 $("btnSwitch").onclick = () => {
   if (mode === "mine") { mode = "pick"; photos = featured; render(); }
   else if (myPhotos.length) { mode = "mine"; photos = myPhotos; render(); }
@@ -378,6 +417,7 @@ function render(){
   $("btnAgain").classList.toggle("hidden", pick);
   const sw = $("btnSwitch");
   sw.classList.toggle("hidden", !pick && !featured.length);
+  $("btnToVideo").classList.toggle("hidden", !video);
   sw.textContent = !pick ? `📸 이달의 포토제닉 ${featured.length}장 보기` : myPhotos.length ? `← 내 사진 ${myPhotos.length}장 다시 보기` : "📷 셀카로 내 사진 찾기";
   for (const id of ["btnAll","selbar","prog","btnOne"]) $(id).classList.toggle("hidden", !has);
   $("resS").textContent = has ? "" : "찾은 사진이 없어요. 다른 셀카로 다시 시도해보세요.";
